@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Démo Chatbot Jøtul</title>
+  <title>Démo Chatbot Jotul</title>
   <style>
     :root {
       --bg: #0f172a;          /* slate-900 */
@@ -11,12 +11,12 @@
       --panel-2: #1f2937;     /* gray-800 */
       --text: #e5e7eb;        /* gray-200 */
       --muted: #9ca3af;       /* gray-400 */
-      --brand: #60a5fa;       /* blue-400 */
-      --brand-2: #93c5fd;     /* blue-300 */
+      --brand: #E30613;       /* Jotul red */
+      --brand-2: #ff4d5a;     /* lighter red for gradient */
       --success: #34d399;     /* emerald-400 */
       --danger: #f87171;      /* red-400 */
-      --bubble-user: #1e3a8a; /* blue-900 */
-      --bubble-bot: #374151;  /* gray-700 */
+      --bubble-user: #B50B16; /* deep red for user bubble */
+      --bubble-bot: #2b2f36;  /* dark grey for bot */
       --radius: 16px;
       --shadow: 0 10px 25px rgba(0,0,0,0.35);
     }
@@ -59,10 +59,7 @@
     .brand {
       display: flex; gap: 12px; align-items: center;
     }
-    .brand .dot {
-      width: 12px; height: 12px; border-radius: 50%; background: var(--brand);
-      box-shadow: 0 0 14px var(--brand);
-    }
+    .brand img { height: 28px; width: auto; display: block; }
     .brand h1 { font-size: 16px; margin: 0; letter-spacing: .4px; }
     .actions { display: flex; gap: 8px; }
     .btn {
@@ -75,7 +72,7 @@
       transition: transform .08s ease, background .2s ease, border-color .2s ease;
     }
     .btn:hover { transform: translateY(-1px); border-color: rgba(255,255,255,0.18); }
-    .btn.primary { background: linear-gradient(180deg, var(--brand), var(--brand-2)); color: #0b1020; font-weight: 600; border: none; }
+    .btn.primary { background: linear-gradient(180deg, var(--brand), var(--brand-2)); color: #ffffff; font-weight: 600; border: none; }
     .btn.success { background: linear-gradient(180deg, #10b981, #34d399); color: #03221a; border: none; font-weight: 600; }
     .btn.ghost { background: transparent; border-color: rgba(255,255,255,0.2); }
 
@@ -95,9 +92,11 @@
       box-shadow: 0 8px 18px rgba(0,0,0,0.25);
       animation: fadeUp .22s ease both;
       border: 1px solid rgba(255,255,255,0.06);
+      word-wrap: break-word;
+      white-space: pre-wrap;
     }
     .bot { background: var(--bubble-bot); border-top-left-radius: 6px; }
-    .user { background: var(--bubble-user); border-top-right-radius: 6px; margin-left: auto; }
+    .user { background: var(--bubble-user); border-top-right-radius: 6px; margin-left: auto; color: #fff; }
 
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(6px); }
@@ -141,13 +140,19 @@
 
     .footer-note { padding: 8px 18px; font-size: 12px; color: var(--muted); text-align: center; }
 
+    .typing { display: inline-flex; gap: 4px; align-items: center; }
+    .typing .dot { width: 6px; height: 6px; border-radius: 50%; background: #cbd5e1; opacity: 0.45; animation: blink 1s infinite ease-in-out; }
+    .typing .dot:nth-child(2){ animation-delay: .15s; }
+    .typing .dot:nth-child(3){ animation-delay: .3s; }
+    @keyframes blink { 0%,80%,100% { opacity: .25; transform: translateY(0); } 40% { opacity: .9; transform: translateY(-2px);} }
+
   </style>
 </head>
 <body>
   <div class="app">
     <header>
       <div class="brand">
-        <span class="dot" aria-hidden="true"></span>
+        <img src="https://www.jotul.fr/themes/custom/jotul_theme/logo.svg" alt="Jotul logo" />
         <h1>Assistant Jøtul — Démo</h1>
       </div>
       <div class="actions">
@@ -161,15 +166,26 @@
 
     <div id="choices" class="choices"></div>
 
-    <div class="footer-note">Scénarios d'assistance pour poêle à granulés et poêle à bois. Démo locale, aucune donnée envoyée.</div>
+    <div class="footer-note">Scénarios d'assistance pour poêle à granulés et poêle à bois (Jotul). Démo locale, aucune donnée envoyée.</div>
   </div>
 
   <script>
     // =====================
-    // Utilitaires d'UI
+    // Utilitaires d'UI & État
     // =====================
     const timeline = document.getElementById('timeline');
     const choicesEl = document.getElementById('choices');
+
+    const state = {
+      history: [], // {role:'bot'|'user', text, ts}
+      data: {},
+      autoplay: false,
+      isThinking: false,
+      userDelay: 1200,   // délai après un clic utilisateur (ms)
+      autoDelay: 1400,   // délai entre étapes en mode auto (ms)
+    };
+
+    const push = (role, text) => state.history.push({ role, text, ts: Date.now() });
 
     const addBubble = (text, who = 'bot') => {
       const b = document.createElement('div');
@@ -177,52 +193,55 @@
       b.textContent = text;
       timeline.appendChild(b);
       timeline.scrollTop = timeline.scrollHeight;
+      push(who, text);
       return b;
     };
 
     const clearChoices = () => choicesEl.innerHTML = '';
 
+    const pause = (ms) => new Promise(res => setTimeout(res, ms));
+
+    const addTyping = () => {
+      const b = document.createElement('div');
+      b.className = 'bubble bot';
+      const t = document.createElement('span');
+      t.className = 'typing';
+      t.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+      b.appendChild(t);
+      timeline.appendChild(b);
+      timeline.scrollTop = timeline.scrollHeight;
+      return b;
+    };
+
+    async function thinkThen(next, ms = 900) {
+      state.isThinking = true;
+      const indicator = addTyping();
+      await pause(ms);
+      indicator.remove();
+      state.isThinking = false;
+      if (typeof next === 'function') next();
+    }
+
+    // Ajoute un bouton de choix qui affiche la réponse utilisateur à droite avec cooldown
     const addChoice = (label, onClick) => {
       const c = document.createElement('button');
       c.className = 'choice';
       c.textContent = label;
-      c.addEventListener('click', onClick);
+      c.addEventListener('click', async () => {
+        if (state.isThinking) return;
+        addBubble(label, 'user');
+        clearChoices();
+        await thinkThen(onClick, state.userDelay);
+      });
       choicesEl.appendChild(c);
       return c;
     };
 
-    const pause = (ms) => new Promise(res => setTimeout(res, ms));
-
     // =====================
-    // Modèle de scénario
-    // =====================
-    // États et transitions (simplifié/linéaire selon flux fourni)
-    const state = {
-      history: [], // {role:'bot'|'user', text}
-      data: {},
-      autoplay: false,
-    };
-
-    const push = (role, text) => {
-      state.history.push({ role, text, ts: Date.now() });
-    };
-
-    function resetAll() {
-      timeline.innerHTML = '';
-      clearChoices();
-      state.history = [];
-      state.data = {};
-      state.autoplay = false;
-      document.getElementById('btn-autoplay').textContent = 'Lecture auto';
-      intro();
-    }
-
-    // =====================
-    // Scénario Jøtul (granulés)
+    // Scénario commun — Accueil & Type de poêle
     // =====================
     async function intro() {
-      addBubble("Bonjour, je suis l’assistant Jøtul. Vous avez un souci avec votre poêle ? Je vais vous aider à comprendre d’où ça vient.");
-      await pause(400);
+      addBubble('Bonjour, je suis l\'assistant Jotul. Vous avez un souci avec votre poêle ? Je vais vous aider à comprendre d\'où ça vient.');
       clearChoices();
       addChoice('Commencer', () => typePoele());
     }
@@ -231,17 +250,78 @@
       addBubble('Quel type de poêle avez-vous ?');
       clearChoices();
       addChoice('Poêle à bois', () => boisEntry());
-      addChoice('Poêle à granulés', () => etape1());
-    }
-
-    function conclusionBois() {
-      clearChoices();
-      addBubble("Pour cette démo, le diagnostic détaillé couvre le poêle à granulés. Pour un poêle à bois, un technicien peut vous conseiller.");
-      addChoice('Revenir', () => typePoele());
+      addChoice('Poêle à granulés', () => pelletStep1());
     }
 
     // =====================
-    // Scénario Poêle à bois
+    // SCÉNARIO POÊLE À GRANULÉS
+    // =====================
+    function pelletStep1() {
+      clearChoices();
+      addBubble('Votre poêle ne démarre pas ?');
+      addChoice('Oui', () => pelletStep2());
+      addChoice('Non', () => finalOK());
+    }
+
+    function pelletStep2() {
+      clearChoices();
+      addBubble('Le réservoir contient-il encore des granulés ?');
+      addChoice('Oui', () => pelletStep3());
+      addChoice('Non', () => {
+        addBubble('Remplissez le réservoir, puis essayez à nouveau de démarrer. Est-ce que ça fonctionne ?');
+        clearChoices();
+        addChoice('Oui', () => finalOK());
+        addChoice('Non', () => pelletStep3());
+      });
+    }
+
+    function pelletStep3() {
+      clearChoices();
+      addBubble('Le poêle est-il bien branché à la prise murale ?');
+      addChoice('Oui', () => pelletStep3b());
+      addChoice('Non', () => {
+        addBubble('Branchez-le correctement puis testez à nouveau. Est-ce que ça démarre ?');
+        clearChoices();
+        addChoice('Oui', () => finalOK());
+        addChoice('Non', () => pelletStep4());
+      });
+    }
+
+    function pelletStep3b() {
+      clearChoices();
+      addBubble('Avez-vous du courant dans la maison ? (Compteur, prises)');
+      addChoice('Oui', () => pelletStep4());
+      addChoice('Non', () => {
+        addBubble('Vérifiez votre alimentation générale (disjoncteur/compteur) puis réessayez.');
+        clearChoices();
+        addChoice('Ça démarre', () => finalOK());
+        addChoice('Toujours pas', () => pelletStep4());
+      });
+    }
+
+    function pelletStep4() {
+      clearChoices();
+      addBubble('Entendez-vous un léger bruit de moteur (la vis qui fait descendre les granulés) ?');
+      addChoice('Oui', () => pelletStep5());
+      addChoice('Non', () => pelletStep5());
+    }
+
+    function pelletStep5() {
+      clearChoices();
+      addBubble('La porte est-elle bien fermée et les joints en bon état ?');
+      addChoice('Oui', () => pelletStep6());
+      addChoice('Non', () => pelletStep6());
+    }
+
+    function pelletStep6() {
+      clearChoices();
+      addBubble('Après ces vérifications, est-ce que le poêle démarre ?');
+      addChoice('Oui', () => finalOK());
+      addChoice('Non', () => savCollect());
+    }
+
+    // =====================
+    // SCÉNARIO POÊLE À BOIS
     // =====================
     function boisEntry() {
       clearChoices();
@@ -251,13 +331,13 @@
       addChoice('Revenir', () => typePoele());
     }
 
-    // ——— Démarrage / Combustion ———
+    // — Démarrage / Combustion —
     function boisStart1() {
       clearChoices();
       addBubble('Le bois utilisé est-il bien sec (humidité < 20%) ?');
       addChoice('Oui', () => boisAir());
       addChoice('Non', () => {
-        addBubble("Utilisez du bois sec (≥ 18 mois de séchage), fendez des bûches fines et allumez en top-down. Est-ce mieux après essai ?");
+        addBubble('Utilisez du bois sec (≥ 18 mois de séchage), fendez des bûches fines et allumez en top-down. Est-ce mieux après essai ?');
         clearChoices();
         addChoice('Oui', () => finalOK());
         addChoice('Non', () => boisAir());
@@ -266,10 +346,10 @@
 
     function boisAir() {
       clearChoices();
-      addBubble("Les arrivées d'air (primaire/secondaire) sont-elles bien ouvertes ?");
+      addBubble('Les arrivées d\'air (primaire/secondaire) sont-elles bien ouvertes ?');
       addChoice('Oui', () => boisDraft());
       addChoice('Non', () => {
-        addBubble("Ouvrez totalement les arrivées d'air pour l'allumage et les 15 premières minutes. Est-ce mieux ?");
+        addBubble('Ouvrez totalement les arrivées d\'air pour l\'allumage et les 15 premières minutes. Est-ce mieux ?');
         clearChoices();
         addChoice('Oui', () => finalOK());
         addChoice('Non', () => boisDraft());
@@ -281,7 +361,7 @@
       addBubble('Le tirage semble-t-il correct (conduit chaud, clapet ouvert) et le conduit a-t-il été ramoné depuis moins d\'un an ?');
       addChoice('Oui', () => boisDoor());
       addChoice('Non', () => {
-        addBubble("Pré-chauffez le conduit (allume-feu/papier), ouvrez le clapet, vérifiez l'absence d'obstruction et planifiez un ramonage si nécessaire. Est-ce mieux ?");
+        addBubble('Pré-chauffez le conduit (allume-feu/papier), ouvrez le clapet, vérifiez l\'absence d\'obstruction et planifiez un ramonage si nécessaire. Est-ce mieux ?');
         clearChoices();
         addChoice('Oui', () => finalOK());
         addChoice('Non', () => boisDoor());
@@ -293,7 +373,7 @@
       addBubble('La porte ferme-t-elle correctement et les joints sont-ils en bon état ?');
       addChoice('Oui', () => boisResult());
       addChoice('Non', () => {
-        addBubble("Faites remplacer ou recoller les joints, puis réessayez. Est-ce mieux ?");
+        addBubble('Faites remplacer ou recoller les joints, puis réessayez. Est-ce mieux ?');
         clearChoices();
         addChoice('Oui', () => finalOK());
         addChoice('Non', () => boisResult());
@@ -307,7 +387,7 @@
       addChoice('Non', () => savCollect());
     }
 
-    // ——— Fumées / Odeurs ———
+    // — Fumées / Odeurs —
     function boisSmoke1() {
       clearChoices();
       addBubble('Avez-vous des fumées qui refoulent dans la pièce ?');
@@ -317,10 +397,10 @@
 
     function boisSmokeAir() {
       clearChoices();
-      addBubble("Les arrivées d'air sont-elles ouvertes et la pièce est-elle suffisamment ventilée ?");
+      addBubble('Les arrivées d\'air sont-elles ouvertes et la pièce est-elle suffisamment ventilée ?');
       addChoice('Oui', () => boisSmokeDraft());
       addChoice('Non', () => {
-        addBubble("Ouvrez les arrivées d'air et une fenêtre quelques minutes, puis rallumez. Est-ce mieux ?");
+        addBubble('Ouvrez les arrivées d\'air et une fenêtre quelques minutes, puis rallumez. Est-ce mieux ?');
         clearChoices();
         addChoice('Oui', () => finalOK());
         addChoice('Non', () => boisSmokeDraft());
@@ -329,10 +409,10 @@
 
     function boisSmokeDraft() {
       clearChoices();
-      addBubble("Le conduit a-t-il été ramoné (< 1 an) et le chapeau n'est-il pas obstrué (nid, suie) ?");
+      addBubble('Le conduit a-t-il été ramoné (< 1 an) et le chapeau n\'est-il pas obstrué (nid, suie) ?');
       addChoice('Oui', () => boisSmokeResult());
       addChoice('Non', () => {
-        addBubble("Faites ramoner et vérifiez le chapeau. En attendant, évitez d'utiliser l'appareil si le refoulement persiste. Après intervention, est-ce mieux ?");
+        addBubble('Faites ramoner et vérifiez le chapeau. En attendant, évitez d\'utiliser l\'appareil si le refoulement persiste. Après intervention, est-ce mieux ?');
         clearChoices();
         addChoice('Oui', () => finalOK());
         addChoice('Non', () => boisSmokeResult());
@@ -341,94 +421,24 @@
 
     function boisSmokeResult() {
       clearChoices();
-      addBubble("Après ces vérifications, la fumée s'évacue-t-elle correctement ?");
+      addBubble('Après ces vérifications, la fumée s\'évacue-t-elle correctement ?');
       addChoice('Oui', () => finalOK());
       addChoice('Non', () => savCollect());
     }
 
-    // 1. Démarrage
-    function etape1() {
-      clearChoices();
-      addBubble('Votre poêle ne démarre pas ?');
-      addChoice('Oui', () => etape2());
-      addChoice('Non', () => finalOK());
-    }
-
-    // 2. Vérification des granulés
-    function etape2() {
-      clearChoices();
-      addBubble('Le réservoir contient-il encore des granulés ?');
-      addChoice('Oui', () => etape3());
-      addChoice('Non', () => {
-        addBubble('Remplissez le réservoir, puis essayez à nouveau de démarrer. Est-ce que ça fonctionne ?');
-        clearChoices();
-        addChoice('Oui', () => finalOK());
-        addChoice('Non', () => etape3());
-      });
-    }
-
-    // 3. Alimentation électrique
-    function etape3() {
-      clearChoices();
-      addBubble('Le poêle est-il bien branché à la prise murale ?');
-      addChoice('Oui', () => etape3bis());
-      addChoice('Non', () => {
-        addBubble('Branchez-le correctement puis testez à nouveau. Est-ce que ça démarre ?');
-        clearChoices();
-        addChoice('Oui', () => finalOK());
-        addChoice('Non', () => etape4());
-      });
-    }
-
-    function etape3bis() {
-      clearChoices();
-      addBubble('Avez-vous du courant dans la maison ? (Compteur, prises)');
-      addChoice('Oui', () => etape4());
-      addChoice('Non', () => {
-        addBubble('Vérifiez votre alimentation générale (disjoncteur/compteur) puis réessayez.');
-        clearChoices();
-        addChoice('Ça démarre', () => finalOK());
-        addChoice('Toujours pas', () => etape4());
-      });
-    }
-
-    // 4. Bruit de la vis sans fin
-    function etape4() {
-      clearChoices();
-      addBubble('Entendez-vous un léger bruit de moteur (la vis qui fait descendre les granulés) ?');
-      addChoice('Oui', () => etape5());
-      addChoice('Non', () => etape5());
-    }
-
-    // 5. Fermeture de la porte
-    function etape5() {
-      clearChoices();
-      addBubble('La porte est-elle bien fermée et les joints en bon état ?');
-      addChoice('Oui', () => etape6());
-      addChoice('Non', () => etape6());
-    }
-
-    // 6. Résultat
-    function etape6() {
-      clearChoices();
-      addBubble('Après ces vérifications, est-ce que le poêle démarre ?');
-      addChoice('Oui', () => finalOK());
-      addChoice('Non', () => savCollect());
-    }
-
-    // 6.a OK
+    // =====================
+    // COMMUN — FIN & FORMULAIRE SAV
+    // =====================
     function finalOK() {
       clearChoices();
-      addBubble('Super, tout est rentré dans l’ordre ✅');
-      addChoice('Recommencer', resetAll);
+      addBubble('Super, tout est rentré dans l\'ordre ✅');
+      addChoice('Recommencer', () => { timeline.innerHTML = ''; state.history = []; intro(); });
     }
 
-    // 6.b Collecte d’infos pour SAV
     function savCollect() {
       clearChoices();
-      addBubble("Pas de souci, un technicien va vous recontacter rapidement. Pour gagner du temps, merci de renseigner :");
+      addBubble('Pas de souci, un technicien va vous recontacter rapidement. Pour gagner du temps, merci de renseigner :');
 
-      // Affiche un "formulaire" en bas sous forme de ligne d'inputs
       renderForm([
         { name: 'fullname', placeholder: 'Nom et prénom', type: 'text', required: true },
         { name: 'phone', placeholder: 'Téléphone', type: 'tel', required: true },
@@ -440,7 +450,7 @@
         addBubble('Merci. Votre demande est transmise à notre équipe technique. Un conseiller vous rappellera rapidement pour convenir de la suite.');
         clearChoices();
         addChoice('Exporter la demande', exportTranscript);
-        addChoice('Recommencer', resetAll);
+        addChoice('Recommencer', () => { timeline.innerHTML=''; state.history=[]; intro(); });
       });
     }
 
@@ -482,23 +492,20 @@
 
       const helper = document.createElement('div');
       helper.className = 'notice';
-      helper.textContent = 'Astuce : pour la vidéo, remplissez avec des données de démonstration.';
+      helper.textContent = 'Astuce : pour la vidéo, remplissez des données de démo. (Un court délai simule la réponse du conseiller)';
       choicesEl.appendChild(helper);
     }
 
     // =====================
-    // Export transcript (JSON)
+    // EXPORT DU TRANSCRIPT — (FIX: était manquant)
     // =====================
     function exportTranscript() {
       const payload = {
-        title: 'Démo Chatbot Jøtul',
+        title: 'Démo Chatbot Jotul',
         createdAt: new Date().toISOString(),
-        history: Array.from(timeline.querySelectorAll('.bubble')).map(b => ({
-          who: b.classList.contains('user') ? 'user' : 'bot',
-          text: b.textContent
-        })),
+        history: state.history,
         formData: state.data || null,
-        version: 1
+        version: 3
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -509,77 +516,104 @@
       URL.revokeObjectURL(url);
     }
 
-    // Boutons barre d'en-tête
-    document.getElementById('btn-reset').addEventListener('click', resetAll);
-    document.getElementById('btn-export').addEventListener('click', exportTranscript);
+    // =====================
+    // LECTURE AUTO (avec bulles + cooldown)
+    // =====================
+    async function botSay(text) {
+      await thinkThen(() => addBubble(text), state.autoDelay);
+    }
 
-    // =====================
-    // Lecture automatique pour vidéo
-    // =====================
-    // Défile le scénario de bout en bout tout seul
-    async function autoplay() {
+    async function autoThen(label, next) {
+      addBubble(label, 'user');
+      await thinkThen(next, state.autoDelay);
+    }
+
+    function autoplay() {
       state.autoplay = !state.autoplay;
       const btn = document.getElementById('btn-autoplay');
       btn.textContent = state.autoplay ? 'Arrêter' : 'Lecture auto';
       if (!state.autoplay) return;
 
-      resetForAutoplay();
-
-      // Séquence automatique : granulés → Oui/Non variés → collecte SAV
-      await pause(400);
-      // Commencer
-      simulateClick(() => typePoele());
-      await pause(500);
-      // Choix type : Poêle à granulés
-      simulateClick(() => etape1());
-      await pause(500);
-      // Étape 1 : ne démarre pas → Oui
-      simulateClick(() => etape2());
-      await pause(500);
-      // Étape 2 : réservoir ? → Oui
-      simulateClick(() => etape3());
-      await pause(500);
-      // Étape 3 : branché ? → Oui → courant ? → Oui
-      simulateClick(() => etape3bis());
-      await pause(500);
-      simulateClick(() => etape4());
-      await pause(500);
-      // Étape 4 : bruit vis sans fin ? → Oui
-      simulateClick(() => etape5());
-      await pause(500);
-      // Étape 5 : porte/joints ? → Oui
-      simulateClick(() => etape6());
-      await pause(500);
-      // Étape 6 : après vérifs, démarre ? → Non → Collecte
-      simulateClick(() => savCollect());
-
-      // Remplir automatiquement des données de démo
-      await pause(600);
-      const inputs = choicesEl.querySelectorAll('input');
-      const demo = ['Jean Dupont', '+33 6 12 34 56 78', 'Jøtul PF 123', 'SN-ABC-2025-001', 'https://picsum.photos/seed/jotul/400/280'];
-      inputs.forEach((inp, i) => inp.value = demo[i] || '');
-      const btnValidate = choicesEl.querySelector('button.btn.success');
-      if (btnValidate) btnValidate.click();
-
-      await pause(600);
-      clearChoices();
-      addChoice('Recommencer', resetAll);
-    }
-
-    function simulateClick(next) { next(); }
-
-    function resetForAutoplay() {
+      // Démo automatique standard (granulés)
       timeline.innerHTML = '';
       clearChoices();
-      addBubble('— DÉMO AUTOMATIQUE —', 'user');
-      intro();
+      (async () => {
+        await botSay('Bonjour, je suis l\'assistant Jotul. Vous avez un souci avec votre poêle ? Je vais vous aider à comprendre d\'où ça vient.');
+        // Parcours 1 : Poêle à granulés (chemin SAV)
+        await autoThen('Commencer', () => typePoele());
+        await autoThen('Poêle à granulés', () => pelletStep1());
+        await botSay('Très bien. Nous allons vérifier étape par étape.');
+        await autoThen('Oui', () => pelletStep2());
+        await botSay('Merci pour la précision.');
+        await autoThen('Oui', () => pelletStep3());
+        await botSay('On contrôle maintenant l\'alimentation électrique.');
+        await autoThen('Oui', () => pelletStep3b());
+        await autoThen('Oui', () => pelletStep4());
+        await botSay('Écoutez le bruit de la vis sans fin.');
+        await autoThen('Oui', () => pelletStep5());
+        await autoThen('Oui', () => pelletStep6());
+        await botSay('Dernière vérification…');
+        await autoThen('Non', () => savCollect());
+        await pause(state.autoDelay);
+        // Remplissage auto du formulaire SAV
+        const inputs = choicesEl.querySelectorAll('input');
+        const demo = ['Jean Dupont', '+33 6 12 34 56 78', 'Jotul PF 123', 'SN-ABC-2025-001', 'https://picsum.photos/seed/jotul/400/280'];
+        inputs.forEach((inp, i) => inp.value = demo[i] || '');
+        const btnValidate = choicesEl.querySelector('button.btn.success');
+        if (btnValidate) btnValidate.click();
+        await pause(state.autoDelay);
+        // Parcours 2 : Poêle à bois (chemin OK)
+        await botSay('Passons maintenant à un exemple sur un poêle à bois.');
+        await autoThen('Poêle à bois', () => boisEntry());
+        await autoThen('Démarrage / combustion', () => boisStart1());
+        await botSay('La qualité du bois est essentielle pour l\'allumage.');
+        await autoThen('Oui', () => boisAir());
+        await botSay('Pensez à bien ouvrir l\'air primaire/secondaire.');
+        await autoThen('Oui', () => boisDraft());
+        await botSay('On vérifie le tirage et le ramonage.');
+        await autoThen('Oui', () => boisDoor());
+        await botSay('Contrôle de la porte et des joints.');
+        await autoThen('Oui', () => boisResult());
+        await botSay('Tout semble bon.');
+        await autoThen('Oui', () => finalOK());
+        await pause(state.autoDelay);
+        clearChoices();
+        addChoice('Recommencer', () => { timeline.innerHTML=''; state.history=[]; intro(); });
+      })();
     }
 
+    // =====================
+    // BOUTONS
+    // =====================
+    document.getElementById('btn-reset').addEventListener('click', () => { timeline.innerHTML=''; state.history=[]; clearChoices(); intro(); });
+    document.getElementById('btn-export').addEventListener('click', exportTranscript);
     document.getElementById('btn-autoplay').addEventListener('click', autoplay);
+
+    // =====================
+    // AUTO-TESTS (facultatif) — exécuter avec ?test=1
+    // =====================
+    function runSelfTests() {
+      const errors = [];
+      const assert = (cond, msg) => { if (!cond) errors.push(msg); };
+      try {
+        assert(typeof exportTranscript === 'function', 'exportTranscript doit être défini');
+        assert(typeof intro === 'function', 'intro doit être défini');
+        assert(typeof typePoele === 'function', 'typePoele doit être défini');
+        assert(typeof pelletStep1 === 'function', 'pelletStep1 doit être défini');
+        assert(typeof boisEntry === 'function', 'boisEntry doit être défini');
+      } catch (e) {
+        errors.push('Exception durant les tests: ' + e.message);
+      }
+      if (errors.length) {
+        console.warn('[SelfTests] ÉCHEC:', errors);
+      } else {
+        console.info('[SelfTests] OK — toutes les fonctions essentielles existent.');
+      }
+    }
+    if (new URLSearchParams(location.search).get('test') === '1') runSelfTests();
 
     // Boot
     intro();
-
   </script>
 </body>
 </html>
